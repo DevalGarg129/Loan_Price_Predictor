@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from sklearn import preprocessing
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -11,68 +11,57 @@ from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn import metrics
 
-data = pd.read_csv('LoanApprovalPrediction.csv')
 
-data.head(5)
+def load_and_preprocess_data():
+    data = pd.read_csv("LoanApprovalPrediction.csv")
 
-#data preprocessing and visualization
-obj = (data.dtypes == 'object')
-print("Categorical variables: ", len(list(obj[obj].index)))
+    # Drop unique ID column
+    if "Loan_ID" in data.columns:
+        data = data.drop("Loan_ID", axis=1)
 
-#As Loan_ID is completely unique
-data = data.drop('Loan_ID', axis=1)
-obj = (data.dtypes == 'object')
-object_cols = list(obj[obj].index)
-plt.figure(figsize=(18, 36))
-index = 1
+    # Encode categorical variables
+    label_encoder = preprocessing.LabelEncoder()
+    for col in data.select_dtypes(include="object").columns:
+        data[col] = label_encoder.fit_transform(data[col])
 
-for col in object_cols:
-    y = data[col].value_counts()
-    plt.subplot(6, 3, index)
-    plt.xticks(rotation=45)
-    sns.barplot(x = list(y.index), y = y)
-    index += 1
+    # Fill missing values with median
+    for col in data.columns:
+        data[col] = data[col].fillna(data[col].median())
+
+    return data
 
 
-#label encoder object to understand word labels
-label_encoder = preprocessing.LabelEncoder()
-obj = (data.dtypes == 'object')
-for col in list(obj[obj].index):
-    data[col] = label_encoder.fit_transform(data[col])
+def train_and_evaluate(data):
+    X = data.drop("Loan_Status", axis=1)
+    Y = data["Loan_Status"]
 
-#to find out the number of columns with datatype == object
-obj = (data.dtypes == 'object')
-print("Categorical variables after encoding : ", len(list(obj[obj].index)))
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        X, Y, test_size=0.2, random_state=2
+    )
 
-plt.figure(figsize=(12, 10))
-sns.heatmap(data.corr(), annot=True, fmt=".2f", linewidths=2)
+    models = {
+        "RandomForest": RandomForestClassifier(n_estimators=100, random_state=42),
+        "KNN": Pipeline([("scaler", StandardScaler()), ("clf", KNeighborsClassifier(n_neighbors=7))]),
+        "SVC": Pipeline([("scaler", StandardScaler()), ("clf", SVC())]),
+        "LogisticRegression": Pipeline([("scaler", StandardScaler()), ("clf", LogisticRegression(max_iter=5000, random_state=42))])
+    }
 
-sns.catplot(x="Gender", y="LoanAmount", hue="Loan_Status", kind="bar", data=data)
+    results = {}
 
-#now find out if there is any missing value 
-for col in data.columns:
-    data[col] = data[col].fillna(data[col].median())
+    for name, model in models.items():
+        model.fit(X_train, Y_train)
+        y_pred = model.predict(X_test)
+        acc = metrics.accuracy_score(Y_test, y_pred)
+        results[name] = acc
+        print(f"{name} Accuracy: {acc * 100:.2f}%")
 
-data.isna().sum()
-
-
-#splitting the data into train and test
-X = data.drop(['Loan_Status'], axis=1)
-Y = data['Loan_Status']
-X.shape, Y.shape
-
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=2)
-X_train.shape, X_test.shape, Y_train.shape, Y_test.shape
+    return results
 
 
-knn = KNeighborsClassifier(n_neighbors=7)
-rfc = RandomForestClassifier(n_estimators=100)
+if __name__ == "__main__":
+    print("🚀 Starting Loan Approval Prediction Pipeline")
 
-svc = SVC()
-lc = LogisticRegression()
+    data = load_and_preprocess_data()
+    results = train_and_evaluate(data)
 
-for clf in (rfc, knn, svc, lc):
-    clf.fit(X_train, Y_train)
-    Y_pred = clf.predict(X_test)
-    print("Accuracy score of ", clf.__class__.__name__, "=",
-          100 * metrics.accuracy_score(Y_test, Y_pred))
+    print("✅ Pipeline completed successfully")
